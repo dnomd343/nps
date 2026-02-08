@@ -1,12 +1,19 @@
-FROM golang:1.15 as builder
-ARG GOPROXY=direct
-WORKDIR /go/src/ehang.io/nps
-COPY . .
-RUN go get -d -v ./... 
-RUN CGO_ENABLED=0 go build -ldflags="-w -s -extldflags -static" ./cmd/nps/nps.go
+ARG GOLANG="golang:1.15-alpine3.14"
+
+FROM --platform=${BUILDPLATFORM} ${GOLANG} AS builder
+WORKDIR /nps/
+COPY ./ ./
+RUN go mod download -x
+ARG TARGETARCH
+ENV GOOS=linux GOARCH=${TARGETARCH} CGO_ENABLED=0
+RUN go build -v -trimpath -ldflags "-s -w -extldflags -static" ./cmd/nps/nps.go
+
+FROM scratch AS web
+WORKDIR /nps/web/
+COPY ./web/views/ ./views/
+COPY ./web/static/ ./static/
 
 FROM scratch
-COPY --from=builder /go/src/ehang.io/nps/nps /
-COPY --from=builder /go/src/ehang.io/nps/web /web
-VOLUME /conf
-CMD ["/nps"]
+COPY --from=web /nps/web/ /web/
+COPY --from=builder /nps/nps /usr/bin/nps
+ENTRYPOINT ["nps"]
